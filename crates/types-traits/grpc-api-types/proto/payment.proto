@@ -7,10 +7,9 @@
 //   This file defines the core data types, enumerations, and request/response
 //   messages used across the Unified Connector Service (UCS) v2 API.
 //
-//   It is imported by services.proto, which defines the gRPC service interfaces
-//   (PaymentService, RefundService, DisputeService). Consumers of the API
-//   should treat services.proto as the entry point and this file as the
-//   shared type library.
+//   It is imported by services.proto for the core gRPC services and by
+//   dispute.proto for DisputeService. This file holds types shared between
+//   payment, dispute, and event flows.
 //
 // Key Concepts:
 //   - Money:         All monetary amounts are represented in minor currency
@@ -39,6 +38,7 @@
 //
 // Related Files:
 //   - services.proto      — gRPC service definitions
+//   - dispute.proto       — DisputeService and its request/response messages
 //   - common_types.proto  — Shared base types (Money, Currency, Address, Customer)
 //   - domain.proto        — Domain-specific data (airline, education)
 //   - payment_methods.proto — Payment method data types and SecretString
@@ -4391,114 +4391,6 @@ message RefundServiceGetRequest {
 
   // Split refund data for platform fee reversals and transfers
   optional SplitRefundsDetails split_refunds = 18;
-}
-
-// ============================================================================
-// DISPUTE SERVICE MESSAGES
-// ============================================================================
-
-// Request message for submitting evidence for a dispute
-message DisputeServiceSubmitEvidenceRequest {
-  // Identification
-  optional string merchant_dispute_id = 1;
-  optional string connector_transaction_id = 2;
-  string dispute_id = 3;
-
-  // Dates
-  optional int64 service_date = 4;
-  optional int64 shipping_date = 5;
-
-  // Evidence
-  repeated EvidenceDocument evidence_documents =
-      6; // Collection of evidence documents
-}
-
-// Response message for a submit evidence operation
-message DisputeServiceSubmitEvidenceResponse {
-  // Identification
-  optional string dispute_id = 1;
-  repeated string submitted_evidence_ids = 2;
-
-  // Status Information
-  DisputeStatus dispute_status = 3;
-  optional string connector_status_code = 4;
-  optional ErrorInfo error = 5;
-  uint32 status_code = 6;
-  map<string, string> response_headers = 7;
-
-  // Reference
-  optional string merchant_dispute_id = 8;
-
-  // Raw Request for debugging
-  optional SecretString raw_connector_request = 9;
-  optional SecretString typed_connector_request = 10;
-}
-
-// Request message for retrieving dispute information
-message DisputeServiceGetRequest {
-  // Identification
-  optional string merchant_dispute_id = 1;
-  optional string dispute_id = 2;
-  string connector_dispute_id = 3;
-}
-
-// Request message for defending a dispute
-message DisputeServiceDefendRequest {
-  // Identification
-  optional string merchant_dispute_id = 1;
-  string connector_transaction_id = 2;
-  string dispute_id = 3;
-
-  // Defend Details
-  optional string reason_code = 4;
-}
-
-// Response message for defending a dispute
-message DisputeServiceDefendResponse {
-  // Identification
-  string dispute_id = 1;
-
-  // Status Information
-  DisputeStatus dispute_status = 2;
-  optional string connector_status_code = 3;
-  optional ErrorInfo error = 4;
-  uint32 status_code = 5;
-  map<string, string> response_headers = 6;
-
-  // Reference
-  optional string merchant_dispute_id = 7;
-
-  // Raw Request for debugging
-  optional SecretString raw_connector_request = 8;
-  optional SecretString typed_connector_request = 9;
-}
-
-// Request message for accepting a dispute
-message DisputeServiceAcceptRequest {
-  // Identification
-  optional string merchant_dispute_id = 1;
-  string connector_transaction_id = 2;
-  string dispute_id = 3;
-}
-
-// Response message for accepting a dispute
-message DisputeServiceAcceptResponse {
-  // Identification
-  string dispute_id = 1;
-
-  // Status Information
-  DisputeStatus dispute_status = 2;
-  optional string connector_status_code = 3;
-  optional ErrorInfo error = 4;
-  uint32 status_code = 5;
-  map<string, string> response_headers = 6;
-
-  // Reference
-  optional string merchant_dispute_id = 7;
-
-  // Raw Request for debugging
-  optional SecretString raw_connector_request = 8;
-  optional SecretString typed_connector_request = 9;
 }
 
 // ============================================================================

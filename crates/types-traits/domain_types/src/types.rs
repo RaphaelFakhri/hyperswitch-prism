@@ -12764,6 +12764,44 @@ impl ForeignTryFrom<grpc_api_types::payments::DisputeServiceAcceptRequest> for A
     }
 }
 
+// Dispute connectors currently accept address evidence as a single text field.
+// Preserve the existing free-text value in line1 while also accepting callers
+// that populate the shared structured Address message.
+fn dispute_address_to_text(address: grpc_payment_types::Address) -> Option<String> {
+    let name = [address.first_name, address.last_name]
+        .into_iter()
+        .flatten()
+        .map(ExposeInterface::expose)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let country = address
+        .country_alpha2_code
+        .and_then(|code| grpc_payment_types::CountryAlpha2::try_from(code).ok())
+        .filter(|country| *country != grpc_payment_types::CountryAlpha2::Unspecified)
+        .map(|country| country.as_str_name().to_owned());
+    let parts = [
+        address.line1,
+        address.line2,
+        address.line3,
+        address.city,
+        address.state,
+        address.zip_code,
+    ];
+    let mut parts = parts
+        .into_iter()
+        .flatten()
+        .map(ExposeInterface::expose)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if !name.is_empty() {
+        parts.insert(0, name);
+    }
+    parts.extend(country);
+    let text = parts.join(", ");
+    (!text.is_empty()).then_some(text)
+}
+
 impl ForeignTryFrom<grpc_api_types::payments::DisputeServiceSubmitEvidenceRequest>
     for SubmitEvidenceData
 {
@@ -12774,45 +12812,47 @@ impl ForeignTryFrom<grpc_api_types::payments::DisputeServiceSubmitEvidenceReques
     ) -> Result<Self, error_stack::Report<Self::Error>> {
         // Initialize all fields to None
         let mut result = Self {
-            dispute_id: Some(value.dispute_id.clone()),
+            dispute_id: value.merchant_dispute_id.or(Some(value.dispute_id.clone())),
             connector_dispute_id: value.dispute_id,
             integrity_object: None,
-            access_activity_log: None,
-            billing_address: None,
+            access_activity_log: value.access_activity_log,
+            billing_address: value.billing_address.and_then(dispute_address_to_text),
             cancellation_policy: None,
             cancellation_policy_file_type: None,
             cancellation_policy_provider_file_id: None,
-            cancellation_policy_disclosure: None,
-            cancellation_rebuttal: None,
+            cancellation_policy_disclosure: value.cancellation_policy_disclosure,
+            cancellation_rebuttal: value.cancellation_rebuttal,
             customer_communication: None,
             customer_communication_file_type: None,
             customer_communication_provider_file_id: None,
-            customer_email_address: None,
-            customer_name: None,
-            customer_purchase_ip: None,
+            customer_email_address: value
+                .customer_email_address
+                .map(|email| Secret::new(email.expose())),
+            customer_name: value.customer_name.map(ExposeInterface::expose),
+            customer_purchase_ip: value.customer_purchase_ip.map(ExposeInterface::expose),
             customer_signature: None,
             customer_signature_file_type: None,
             customer_signature_provider_file_id: None,
-            product_description: None,
+            product_description: value.product_description,
             receipt: None,
             receipt_file_type: None,
             receipt_provider_file_id: None,
             refund_policy: None,
             refund_policy_file_type: None,
             refund_policy_provider_file_id: None,
-            refund_policy_disclosure: None,
-            refund_refusal_explanation: None,
+            refund_policy_disclosure: value.refund_policy_disclosure,
+            refund_refusal_explanation: value.refund_refusal_explanation,
             service_date: value.service_date.map(|date| date.to_string()),
             service_documentation: None,
             service_documentation_file_type: None,
             service_documentation_provider_file_id: None,
-            shipping_address: None,
-            shipping_carrier: None,
+            shipping_address: value.shipping_address.and_then(dispute_address_to_text),
+            shipping_carrier: value.shipping_carrier,
             shipping_date: value.shipping_date.map(|date| date.to_string()),
             shipping_documentation: None,
             shipping_documentation_file_type: None,
             shipping_documentation_provider_file_id: None,
-            shipping_tracking_number: None,
+            shipping_tracking_number: value.shipping_tracking_number,
             invoice_showing_distinct_transactions: None,
             invoice_showing_distinct_transactions_file_type: None,
             invoice_showing_distinct_transactions_provider_file_id: None,
@@ -15094,7 +15134,9 @@ pub fn generate_defend_dispute_response(
     match defend_dispute_response {
         Ok(response) => Ok(DisputeServiceDefendResponse {
             dispute_id: response.connector_dispute_id,
-            dispute_status: response.dispute_status as i32,
+            dispute_status: grpc_api_types::payments::DisputeStatus::foreign_from(
+                response.dispute_status,
+            ) as i32,
             connector_status_code: None,
             error: None,
             merchant_dispute_id: None,
@@ -15110,7 +15152,7 @@ pub fn generate_defend_dispute_response(
                 .connector_transaction_id
                 .clone()
                 .unwrap_or_else(|| NO_ERROR_CODE.to_string()),
-            dispute_status: common_enums::DisputeStatus::DisputeLost as i32,
+            dispute_status: grpc_api_types::payments::DisputeStatus::DisputeLost as i32,
             connector_status_code: None,
             error: Some(grpc_api_types::payments::ErrorInfo {
                 unified_details: None,
